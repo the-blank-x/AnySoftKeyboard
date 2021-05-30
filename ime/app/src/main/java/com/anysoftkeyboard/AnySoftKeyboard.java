@@ -965,7 +965,7 @@ public abstract class AnySoftKeyboard extends AnySoftKeyboardColorizeNavBar {
                 // updated faster!
                 // but will not handle "delete all selected text" feature,
                 // hence the "if (!forMultiTap)" above
-                final CharSequence beforeText = ic.getTextBeforeCursor(MAX_CHARS_PER_CODE_POINT, 0);
+                final CharSequence beforeText = ic.getTextBeforeCursor(MAX_CHARS_PER_CODEPOINT, 0);
                 final int textLengthBeforeDelete =
                         TextUtils.isEmpty(beforeText)
                                 ? 0
@@ -1014,7 +1014,16 @@ public abstract class AnySoftKeyboard extends AnySoftKeyboardColorizeNavBar {
 
             postUpdateSuggestions();
         } else {
-            sendDownUpKeyEvents(KeyEvent.KEYCODE_FORWARD_DEL);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                sendDownUpKeyEvents(KeyEvent.KEYCODE_FORWARD_DEL);
+            } else {
+                final CharSequence afterText = ic.getTextAfterCursor(MAX_CHARS_PER_CODEPOINT, 0);
+                final int textLengthAfterDelete =
+                        TextUtils.isEmpty(afterText)
+                                ? 0
+                                : Character.charCount(Character.codePointAt(afterText, 0));
+                ic.deleteSurroundingText(0, textLengthAfterDelete);
+            }
         }
     }
 

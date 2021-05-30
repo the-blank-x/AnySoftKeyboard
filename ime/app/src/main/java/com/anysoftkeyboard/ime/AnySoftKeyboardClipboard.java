@@ -1,16 +1,11 @@
 package com.anysoftkeyboard.ime;
 
-import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Build;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.ArrayAdapter;
 import android.widget.TextView;
@@ -22,8 +17,6 @@ import androidx.appcompat.app.AlertDialog;
 import com.anysoftkeyboard.api.KeyCodes;
 import com.anysoftkeyboard.devicespecific.Clipboard;
 import com.anysoftkeyboard.keyboards.Keyboard;
-import com.anysoftkeyboard.keyboards.views.KeyboardViewContainerView;
-import com.anysoftkeyboard.rx.GenericOnError;
 import com.menny.android.anysoftkeyboard.AnyApplication;
 import com.menny.android.anysoftkeyboard.R;
 import java.util.ArrayList;
@@ -35,158 +28,14 @@ public abstract class AnySoftKeyboardClipboard extends AnySoftKeyboardSwipeListe
     private boolean mArrowSelectionState;
     private Clipboard mClipboard;
     protected static final int MAX_CHARS_PER_CODE_POINT = 2;
-    private static final long MAX_TIME_TO_SHOW_SYNCED_CLIPBOARD_ENTRY = 15 * 1000;
-    private long mLastSyncedClipboardEntryTime = Long.MIN_VALUE;
-    @Nullable private CharSequence mLastSyncedClipboardEntry;
-    private boolean mLastSyncedClipboardEntryInSecureInput;
-
-    @VisibleForTesting
-    protected interface ClipboardActionOwner {
-        @NonNull
-        Context getContext();
-
-        void outputClipboardText(@NonNull CharSequence text);
-    }
-
-    @VisibleForTesting
-    protected final ClipboardActionOwner mClipboardActionOwnerImpl =
-            new ClipboardActionOwner() {
-                @NonNull
-                @Override
-                public Context getContext() {
-                    return AnySoftKeyboardClipboard.this;
-                }
-
-                @Override
-                public void outputClipboardText(@NonNull CharSequence text) {
-                    AnySoftKeyboardClipboard.this.onText(null, text);
-                    AnySoftKeyboardClipboard.this
-                            .getInputViewContainer()
-                            .removeStripAction(mSuggestionClipboardEntry);
-                }
-            };
-
-    @VisibleForTesting
-    protected static class ClipboardStripActionProvider
-            implements KeyboardViewContainerView.StripActionProvider {
-        private final ClipboardActionOwner mOwner;
-        @Nullable private CharSequence mEntryText;
-        @Nullable private TextView mClipboardText;
-
-        ClipboardStripActionProvider(@NonNull ClipboardActionOwner owner) {
-            mOwner = owner;
-        }
-
-        @Override
-        public View inflateActionView(ViewGroup parent) {
-            final View rootView =
-                    LayoutInflater.from(mOwner.getContext())
-                            .inflate(R.layout.clipboard_suggestion_action, parent, false);
-            mClipboardText = rootView.findViewById(R.id.clipboard_suggestion_text);
-            rootView.setOnClickListener(
-                    view -> {
-                        final TextView clipboardText = mClipboardText;
-                        if (clipboardText != null) {
-                            mOwner.outputClipboardText(mEntryText);
-                        }
-                    });
-
-            return rootView;
-        }
-
-        @Override
-        public void onRemoved() {
-            mClipboardText = null;
-        }
-
-        boolean isVisible() {
-            return mClipboardText != null;
-        }
-
-        void setClipboardText(CharSequence text, boolean isSecured) {
-            mEntryText = text;
-            mClipboardText.setSelected(true);
-            if (isSecured) mClipboardText.setText("**********");
-            else mClipboardText.setText(text);
-        }
-    }
-
-    @VisibleForTesting protected ClipboardStripActionProvider mSuggestionClipboardEntry;
 
     @Override
     public void onCreate() {
         super.onCreate();
         mClipboard = AnyApplication.getDeviceSpecific().createClipboard(getApplicationContext());
-        mSuggestionClipboardEntry = new ClipboardStripActionProvider(mClipboardActionOwnerImpl);
-        addDisposable(
-                prefs().getBoolean(
-                                R.string.settings_key_os_clipboard_sync,
-                                R.bool.settings_default_os_clipboard_sync)
-                        .asObservable()
-                        .subscribe(
-                                syncClipboard -> {
-                                    mLastSyncedClipboardEntryTime = Long.MIN_VALUE;
-                                    mClipboard.setClipboardUpdatedListener(
-                                            syncClipboard ? this::onClipboardEntryAdded : null);
-                                },
-                                GenericOnError.onError("settings_key_os_clipboard_sync")));
     }
 
-    private void onClipboardEntryAdded(CharSequence clipboardEntry) {
-        mLastSyncedClipboardEntry = clipboardEntry;
-        EditorInfo currentInputEditorInfo = getCurrentInputEditorInfo();
-        mLastSyncedClipboardEntryInSecureInput =
-                currentInputEditorInfo != null && isTextPassword(currentInputEditorInfo);
-        mLastSyncedClipboardEntryTime = SystemClock.uptimeMillis();
-    }
-
-    @Override
-    public void onStartInputView(EditorInfo info, boolean restarting) {
-        super.onStartInputView(info, restarting);
-        if (mLastSyncedClipboardEntryTime + MAX_TIME_TO_SHOW_SYNCED_CLIPBOARD_ENTRY
-                        >= SystemClock.uptimeMillis()
-                && !TextUtils.isEmpty(mLastSyncedClipboardEntry)) {
-            getInputViewContainer().addStripAction(mSuggestionClipboardEntry);
-            getInputViewContainer().setActionsStripVisibility(true);
-
-            mSuggestionClipboardEntry.setClipboardText(
-                    mLastSyncedClipboardEntry,
-                    mLastSyncedClipboardEntryInSecureInput || isTextPassword(info));
-        }
-    }
-
-    protected static boolean isTextPassword(EditorInfo info) {
-        if ((info.inputType & EditorInfo.TYPE_CLASS_TEXT) == 0) return false;
-        switch (info.inputType & EditorInfo.TYPE_MASK_VARIATION) {
-            case EditorInfo.TYPE_TEXT_VARIATION_PASSWORD:
-            case EditorInfo.TYPE_TEXT_VARIATION_WEB_PASSWORD:
-            case EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    @Override
-    public void onKey(
-            int primaryCode,
-            Keyboard.Key key,
-            int multiTapIndex,
-            int[] nearByKeyCodes,
-            boolean fromUI) {
-        if (mSuggestionClipboardEntry.isVisible()) {
-            getInputViewContainer().removeStripAction(mSuggestionClipboardEntry);
-        }
-        super.onKey(primaryCode, key, multiTapIndex, nearByKeyCodes, fromUI);
-    }
-
-    @Override
-    public void onFinishInputView(boolean finishingInput) {
-        super.onFinishInputView(finishingInput);
-        getInputViewContainer().removeStripAction(mSuggestionClipboardEntry);
-    }
-
-    private void showAllClipboardEntries(Keyboard.Key key) {
+    private void showAllClipboardEntries(final Keyboard.Key key) {
         if (mClipboard.getClipboardEntriesCount() == 0) {
             showToastMessage(R.string.clipboard_is_empty_toast, true);
         } else {
@@ -232,7 +81,7 @@ public abstract class AnySoftKeyboardClipboard extends AnySoftKeyboardSwipeListe
                                 ? mClipboard.getText(0 /*last entry paste*/)
                                 : "";
                 if (!TextUtils.isEmpty(clipboardText)) {
-                    onText(null, clipboardText);
+                    onText(key, clipboardText);
                 } else {
                     showToastMessage(R.string.clipboard_is_empty_toast, true);
                 }
@@ -297,7 +146,7 @@ public abstract class AnySoftKeyboardClipboard extends AnySoftKeyboardSwipeListe
                     // A Unicode code-point can be made up of two Java chars.
                     // We check if that's what happening before the cursor:
                     final String toLeft =
-                            ic.getTextBeforeCursor(MAX_CHARS_PER_CODE_POINT, 0).toString();
+                            ic.getTextBeforeCursor(MAX_CHARS_PER_CODEPOINT, 0).toString();
                     if (toLeft.length() == 0) {
                         ic.setSelection(selectionStart, selectionEnd);
                     } else {
@@ -310,7 +159,7 @@ public abstract class AnySoftKeyboardClipboard extends AnySoftKeyboardSwipeListe
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     final String toRight =
-                            ic.getTextAfterCursor(MAX_CHARS_PER_CODE_POINT, 0).toString();
+                            ic.getTextAfterCursor(MAX_CHARS_PER_CODEPOINT, 0).toString();
                     if (toRight.length() == 0) {
                         ic.setSelection(selectionStart, selectionEnd);
                     } else {

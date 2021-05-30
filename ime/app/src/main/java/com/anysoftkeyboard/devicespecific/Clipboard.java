@@ -16,14 +16,7 @@
 
 package com.anysoftkeyboard.devicespecific;
 
-import androidx.annotation.Nullable;
-
 public interface Clipboard {
-
-    interface ClipboardUpdatedListener {
-        void onClipboardEntryAdded(CharSequence text);
-    }
-
     CharSequence getText(int entryIndex);
 
     int getClipboardEntriesCount();
@@ -31,6 +24,4 @@ public interface Clipboard {
     void setText(CharSequence text);
 
     void deleteEntry(int entryIndex);
-
-    void setClipboardUpdatedListener(@Nullable ClipboardUpdatedListener listener);
 }

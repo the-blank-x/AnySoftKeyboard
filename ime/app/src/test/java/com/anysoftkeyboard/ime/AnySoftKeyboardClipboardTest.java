@@ -1,7 +1,6 @@
 package com.anysoftkeyboard.ime;
 
 import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
-import static com.anysoftkeyboard.TestableAnySoftKeyboard.createEditorInfo;
 
 import android.annotation.TargetApi;
 import android.app.Service;
@@ -9,12 +8,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.os.Build;
-import android.text.InputType;
+import android.support.v7.app.AlertDialog;
 import android.view.KeyEvent;
-import android.view.View;
-import android.view.inputmethod.EditorInfo;
-import android.widget.LinearLayout;
-import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import com.anysoftkeyboard.AnySoftKeyboardBaseTest;
@@ -23,15 +18,11 @@ import com.anysoftkeyboard.api.KeyCodes;
 import com.anysoftkeyboard.test.SharedPrefsHelper;
 import com.anysoftkeyboard.utils.GeneralDialogTestUtil;
 import com.menny.android.anysoftkeyboard.R;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import org.robolectric.annotation.Config;
-import org.robolectric.shadows.ShadowSystemClock;
 import org.robolectric.shadows.ShadowToast;
 
 @RunWith(AnySoftKeyboardRobolectricTestRunner.class)
@@ -446,7 +437,7 @@ public class AnySoftKeyboardClipboardTest extends AnySoftKeyboardBaseTest {
 
         latestAlertDialog = GeneralDialogTestUtil.getLatestShownDialog();
         Assert.assertNotNull(latestAlertDialog);
-        Assert.assertEquals(15, latestAlertDialog.getListView().getAdapter().getCount());
+        Assert.assertEquals(16, latestAlertDialog.getListView().getAdapter().getCount());
         Assert.assertEquals(
                 "text 99", latestAlertDialog.getListView().getAdapter().getItem(0).toString());
         Assert.assertEquals(
@@ -471,11 +462,15 @@ public class AnySoftKeyboardClipboardTest extends AnySoftKeyboardBaseTest {
         shadowManager.setPrimaryClip(
                 new ClipData("text 2", new String[0], new ClipData.Item("text 2")));
 
-        Assert.assertNull(ShadowToast.getLatestToast());
         mAnySoftKeyboardUnderTest.simulateKeyPress(KeyCodes.CLIPBOARD_PASTE_POPUP);
 
-        Assert.assertNotNull(ShadowToast.getLatestToast());
-        ShadowToast.reset();
+        AlertDialog latestAlertDialog = GeneralDialogTestUtil.getLatestShownDialog();
+        Assert.assertNotNull(latestAlertDialog);
+        Assert.assertEquals(1, latestAlertDialog.getListView().getAdapter().getCount());
+        Assert.assertEquals(
+                "text 1", latestAlertDialog.getListView().getAdapter().getItem(0).toString());
+
+        latestAlertDialog.cancel();
 
         SharedPrefsHelper.setPrefsValue(R.string.settings_key_os_clipboard_sync, true);
 
@@ -484,12 +479,13 @@ public class AnySoftKeyboardClipboardTest extends AnySoftKeyboardBaseTest {
 
         mAnySoftKeyboardUnderTest.simulateKeyPress(KeyCodes.CLIPBOARD_PASTE_POPUP);
 
-        Assert.assertNull(ShadowToast.getLatestToast());
-        AlertDialog latestAlertDialog = GeneralDialogTestUtil.getLatestShownDialog();
+        latestAlertDialog = GeneralDialogTestUtil.getLatestShownDialog();
         Assert.assertNotNull(latestAlertDialog);
-        Assert.assertEquals(1, latestAlertDialog.getListView().getAdapter().getCount());
+        Assert.assertEquals(2, latestAlertDialog.getListView().getAdapter().getCount());
         Assert.assertEquals(
                 "text 3", latestAlertDialog.getListView().getAdapter().getItem(0).toString());
+        Assert.assertEquals(
+                "text 1", latestAlertDialog.getListView().getAdapter().getItem(1).toString());
     }
 
     @Test
@@ -538,208 +534,5 @@ public class AnySoftKeyboardClipboardTest extends AnySoftKeyboardBaseTest {
                 keyEventArgumentCaptor.getAllValues().get(1).getMetaState());
         Assert.assertEquals(
                 KeyEvent.KEYCODE_Z, keyEventArgumentCaptor.getAllValues().get(1).getKeyCode());
-    }
-
-    @Test
-    public void testBasicStripActionIfClipboard() {
-        Assert.assertNotNull(mAnySoftKeyboardUnderTest.getClipboardActionOwnerImpl());
-        Assert.assertSame(
-                mAnySoftKeyboardUnderTest.getClipboardActionOwnerImpl().getContext(),
-                mAnySoftKeyboardUnderTest);
-        Assert.assertNotNull(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider());
-
-        final View rootStripView =
-                mAnySoftKeyboardUnderTest
-                        .getClipboardStripActionProvider()
-                        .inflateActionView(new LinearLayout(mAnySoftKeyboardUnderTest));
-        Assert.assertNotNull(rootStripView);
-        Assert.assertNotNull(rootStripView.findViewById(R.id.clipboard_suggestion_text));
-        Assert.assertTrue(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-        mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().onRemoved();
-        Assert.assertFalse(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-    }
-
-    @Test
-    public void testDoesNotShowStripActionIfClipboardIsEmpty() {
-        simulateFinishInputFlow();
-        simulateOnStartInputFlow();
-        Assert.assertNull(
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text));
-        Assert.assertFalse(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-    }
-
-    @Test
-    public void testShowStripActionIfClipboardIsNotEmptyHappyPath() {
-        simulateFinishInputFlow();
-        ClipboardManager clipboardManager =
-                (ClipboardManager)
-                        getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboardManager.setPrimaryClip(
-                new ClipData("text 1", new String[0], new ClipData.Item("text 1")));
-
-        simulateOnStartInputFlow();
-        Assert.assertTrue(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-        Assert.assertEquals("", mAnySoftKeyboardUnderTest.getCurrentInputConnectionText());
-
-        final TextView clipboardView =
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text);
-        Assert.assertNotNull(clipboardView);
-        Assert.assertEquals("text 1", clipboardView.getText().toString());
-        ((View) clipboardView.getParent()).performClick();
-        Assert.assertEquals("text 1", mAnySoftKeyboardUnderTest.getCurrentInputConnectionText());
-        Assert.assertNull(
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text));
-        Assert.assertFalse(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-    }
-
-    @Test
-    public void testHideActionIfKeyPressed() {
-        simulateFinishInputFlow();
-        ClipboardManager clipboardManager =
-                (ClipboardManager)
-                        getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboardManager.setPrimaryClip(
-                new ClipData("text 1", new String[0], new ClipData.Item("text 1")));
-
-        simulateOnStartInputFlow();
-        Assert.assertTrue(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-        Assert.assertNotNull(
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text));
-        mAnySoftKeyboardUnderTest.simulateKeyPress('a');
-        Assert.assertFalse(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
-        Assert.assertNull(
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text));
-    }
-
-    @Test
-    public void testShowStripActionAsPasswordIfClipboardIsNotEmptyInPasswordField() {
-        simulateFinishInputFlow();
-        ClipboardManager clipboardManager =
-                (ClipboardManager)
-                        getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboardManager.setPrimaryClip(
-                new ClipData("text 1", new String[0], new ClipData.Item("text 1")));
-
-        int[] variations =
-                new int[] {
-                    InputType.TYPE_TEXT_VARIATION_PASSWORD,
-                    InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
-                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                };
-
-        for (int variation : variations) {
-            simulateOnStartInputFlow(
-                    false,
-                    createEditorInfo(
-                            EditorInfo.IME_ACTION_NONE, InputType.TYPE_CLASS_TEXT | variation));
-
-            final TextView clipboardView =
-                    mAnySoftKeyboardUnderTest
-                            .getInputViewContainer()
-                            .findViewById(R.id.clipboard_suggestion_text);
-            Assert.assertNotNull("for " + variation, clipboardView);
-            Assert.assertEquals(
-                    "for " + variation, "**********", clipboardView.getText().toString());
-
-            simulateFinishInputFlow();
-        }
-    }
-
-    @Test
-    public void testShowStripActionAsPasswordIfClipboardWasOriginatedInPassword() {
-        simulateFinishInputFlow();
-
-        simulateOnStartInputFlow(
-                false,
-                createEditorInfo(
-                        EditorInfo.IME_ACTION_NONE,
-                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD));
-
-        ClipboardManager clipboardManager =
-                (ClipboardManager)
-                        getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboardManager.setPrimaryClip(
-                new ClipData("text 1", new String[0], new ClipData.Item("text 1")));
-
-        simulateFinishInputFlow();
-        simulateOnStartInputFlow();
-
-        final TextView clipboardView =
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text);
-        Assert.assertNotNull(clipboardView);
-        Assert.assertEquals("**********", clipboardView.getText().toString());
-
-        simulateFinishInputFlow();
-    }
-
-    @Test
-    public void testShowStripActionAsNonPasswordIfClipboardIsNotEmptyInNonPasswordField() {
-        simulateFinishInputFlow();
-        ClipboardManager clipboardManager =
-                (ClipboardManager)
-                        getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboardManager.setPrimaryClip(
-                new ClipData("text 1", new String[0], new ClipData.Item("text 1")));
-
-        int[] variations =
-                new int[] {
-                    InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT,
-                    InputType.TYPE_TEXT_VARIATION_FILTER,
-                    InputType.TYPE_TEXT_VARIATION_PHONETIC,
-                    InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
-                    InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,
-                    InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
-                    InputType.TYPE_TEXT_VARIATION_LONG_MESSAGE,
-                    InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE,
-                    InputType.TYPE_TEXT_VARIATION_EMAIL_SUBJECT,
-                    InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
-                    InputType.TYPE_TEXT_VARIATION_URI,
-                    InputType.TYPE_TEXT_VARIATION_NORMAL,
-                };
-
-        for (int variation : variations) {
-            simulateOnStartInputFlow(
-                    false,
-                    createEditorInfo(
-                            EditorInfo.IME_ACTION_NONE, InputType.TYPE_CLASS_TEXT | variation));
-
-            final TextView clipboardView =
-                    mAnySoftKeyboardUnderTest
-                            .getInputViewContainer()
-                            .findViewById(R.id.clipboard_suggestion_text);
-            Assert.assertNotNull("for " + variation, clipboardView);
-            Assert.assertEquals("for " + variation, "text 1", clipboardView.getText().toString());
-
-            simulateFinishInputFlow();
-        }
-    }
-
-    @Test
-    public void testDoesNotShowStripActionIfClipboardEntryIsOld() {
-        simulateFinishInputFlow();
-        ClipboardManager clipboardManager =
-                (ClipboardManager)
-                        getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboardManager.setPrimaryClip(
-                new ClipData("text 1", new String[0], new ClipData.Item("text 1")));
-        ShadowSystemClock.advanceBy(Duration.of(16, ChronoUnit.SECONDS));
-        simulateOnStartInputFlow();
-        Assert.assertNull(
-                mAnySoftKeyboardUnderTest
-                        .getInputViewContainer()
-                        .findViewById(R.id.clipboard_suggestion_text));
-        Assert.assertFalse(mAnySoftKeyboardUnderTest.getClipboardStripActionProvider().isVisible());
     }
 }

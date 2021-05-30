@@ -25,7 +25,6 @@ import com.anysoftkeyboard.dictionaries.DictionaryBackgroundLoader;
 import com.anysoftkeyboard.dictionaries.GetWordsCallback;
 import com.anysoftkeyboard.dictionaries.Suggest;
 import com.anysoftkeyboard.dictionaries.WordComposer;
-import com.anysoftkeyboard.ime.AnySoftKeyboardClipboard;
 import com.anysoftkeyboard.ime.InputViewBinder;
 import com.anysoftkeyboard.keyboards.AnyKeyboard;
 import com.anysoftkeyboard.keyboards.GenericKeyboard;
@@ -147,12 +146,21 @@ public class TestableAnySoftKeyboard extends SoftKeyboard {
         return mSpiedOverlayCreator;
     }
 
-    public AnySoftKeyboardClipboard.ClipboardActionOwner getClipboardActionOwnerImpl() {
-        return mClipboardActionOwnerImpl;
-    }
+    // Needs this since we want to use Mockito.spy, which gets the class at runtime
+    // and creates a stub for it, which will create an additional real instance
+    // of super.createOverlayDataCreator(), and confuses everyone.
+    private static class OverlayCreatorForSpy implements OverlyDataCreator {
 
-    public AnySoftKeyboardClipboard.ClipboardStripActionProvider getClipboardStripActionProvider() {
-        return mSuggestionClipboardEntry;
+        private final OverlyDataCreator mOriginalOverlayDataCreator;
+
+        public OverlayCreatorForSpy(OverlyDataCreator originalOverlayDataCreator) {
+            mOriginalOverlayDataCreator = originalOverlayDataCreator;
+        }
+
+        @Override
+        public OverlayData createOverlayData(ComponentName remoteApp) {
+            return mOriginalOverlayDataCreator.createOverlayData(remoteApp);
+        }
     }
 
     public OverlyDataCreator getMockOverlayDataCreator() {
